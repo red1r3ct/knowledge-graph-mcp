@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	defaultDBPath = "knowledge_base.db"
+	defaultDBPath = "knowledge-base.db"
 )
 
 func main() {

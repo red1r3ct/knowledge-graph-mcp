@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/red1r3ct/knowledge-graph-mcp/internal/migrations"
 	"github.com/red1r3ct/knowledge-graph-mcp/internal/note"
 )
 
@@ -27,7 +27,8 @@ func TestStorage(t *testing.T) {
 	defer storage.Close()
 
 	// Run migrations
-	err = runTestMigrations(storage.db)
+	migrationRunner := migrations.NewMigrationRunner(tempFile.Name())
+	err = migrationRunner.RunMigrations()
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -102,7 +103,7 @@ func TestStorage(t *testing.T) {
 					Content: "Content",
 					Type:    "",
 				},
-				wantErr: false,
+				wantErr: true,
 			},
 		}
 
@@ -287,7 +288,7 @@ func TestStorage(t *testing.T) {
 
 	t.Run("List", func(t *testing.T) {
 		// Clean up existing data
-		_, err := storage.db.Exec("DELETE FROM note")
+		_, err := storage.db.Exec("DELETE FROM notes")
 		require.NoError(t, err)
 
 		// Create test data
@@ -421,95 +422,6 @@ func TestStorage(t *testing.T) {
 			})
 		}
 	})
-}
-
-func runTestMigrations(db *sql.DB) error {
-	// Create note table
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS note (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			title TEXT NOT NULL,
-			content TEXT NOT NULL,
-			type TEXT NOT NULL,
-			tags TEXT,
-			metadata TEXT,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create note table: %w", err)
-	}
-
-	// Create indexes
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_note_title ON note(title)`)
-	if err != nil {
-		return fmt.Errorf("failed to create title index: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_note_type ON note(type)`)
-	if err != nil {
-		return fmt.Errorf("failed to create type index: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_note_created_at ON note(created_at DESC)`)
-	if err != nil {
-		return fmt.Errorf("failed to create created_at index: %w", err)
-	}
-
-	// Create FTS virtual table for full-text search
-	_, err = db.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS note_fts USING fts5(
-			title, content, content='note', content_rowid='id'
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create FTS table: %w", err)
-	}
-
-	// Create trigger to keep FTS table in sync
-	_, err = db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS note_fts_insert AFTER INSERT ON note BEGIN
-			INSERT INTO note_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
-		END
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create FTS insert trigger: %w", err)
-	}
-
-	_, err = db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS note_fts_delete AFTER DELETE ON note BEGIN
-			INSERT INTO note_fts(note_fts, rowid, title, content) VALUES('delete', old.id, old.title, old.content);
-		END
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create FTS delete trigger: %w", err)
-	}
-
-	_, err = db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS note_fts_update AFTER UPDATE ON note BEGIN
-			INSERT INTO note_fts(note_fts, rowid, title, content) VALUES('delete', old.id, old.title, old.content);
-			INSERT INTO note_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
-		END
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create FTS update trigger: %w", err)
-	}
-
-	// Create trigger to update updated_at timestamp
-	_, err = db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS update_note_updated_at 
-		AFTER UPDATE ON note
-		FOR EACH ROW
-		BEGIN
-			UPDATE note SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-		END
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create update trigger: %w", err)
-	}
-
-	return nil
 }
 
 func strPtr(s string) *string {

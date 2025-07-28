@@ -66,7 +66,7 @@ func (s *Storage) Create(ctx context.Context, req note.CreateNoteRequest) (*note
 	}
 
 	query := `
-		INSERT INTO note (title, content, type, tags, metadata)
+		INSERT INTO notes (title, content, type, tags, metadata)
 		VALUES (?, ?, ?, ?, ?)
 	`
 
@@ -87,7 +87,7 @@ func (s *Storage) Create(ctx context.Context, req note.CreateNoteRequest) (*note
 func (s *Storage) Get(ctx context.Context, id int64) (*note.Note, error) {
 	query := `
 		SELECT id, title, content, type, tags, metadata, created_at, updated_at
-		FROM note
+		FROM notes
 		WHERE id = ?
 	`
 
@@ -169,7 +169,7 @@ func (s *Storage) Update(ctx context.Context, id int64, req note.UpdateNoteReque
 	}
 
 	query := fmt.Sprintf(`
-		UPDATE note
+		UPDATE notes
 		SET %s, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, strings.Join(setClauses, ", "))
@@ -195,7 +195,7 @@ func (s *Storage) Update(ctx context.Context, id int64, req note.UpdateNoteReque
 
 // Delete deletes a note by ID
 func (s *Storage) Delete(ctx context.Context, id int64) error {
-	query := "DELETE FROM note WHERE id = ?"
+	query := "DELETE FROM notes WHERE id = ?"
 
 	result, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
@@ -222,7 +222,7 @@ func (s *Storage) List(ctx context.Context, req note.ListNotesRequest) (*note.Li
 
 	if req.Search != "" {
 		// Use FTS for full-text search
-		whereClauses = append(whereClauses, "note.id IN (SELECT rowid FROM note_fts WHERE note_fts MATCH ?)")
+		whereClauses = append(whereClauses, "notes.id IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?)")
 		args = append(args, req.Search)
 	}
 
@@ -244,7 +244,7 @@ func (s *Storage) List(ctx context.Context, req note.ListNotesRequest) (*note.Li
 	}
 
 	// Get total count
-	countQuery := "SELECT COUNT(*) FROM note " + whereClause
+	countQuery := "SELECT COUNT(*) FROM notes " + whereClause
 	var total int64
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, fmt.Errorf("failed to count notes: %w", err)
@@ -263,7 +263,7 @@ func (s *Storage) List(ctx context.Context, req note.ListNotesRequest) (*note.Li
 	// Get items
 	query := fmt.Sprintf(`
 		SELECT id, title, content, type, tags, metadata, created_at, updated_at
-		FROM note
+		FROM notes
 		%s
 		ORDER BY %s %s
 		LIMIT ? OFFSET ?
