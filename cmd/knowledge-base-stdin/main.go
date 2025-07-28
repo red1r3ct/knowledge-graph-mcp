@@ -10,9 +10,13 @@ import (
 	_ "github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"
 
-	"github.com/red1r3ct/knowledge-graph-mcp/internal/knowledgebase/mcp"
-	"github.com/red1r3ct/knowledge-graph-mcp/internal/knowledgebase/sqlite"
+	kbmcp "github.com/red1r3ct/knowledge-graph-mcp/internal/knowledgebase/mcp"
+	kbstorage "github.com/red1r3ct/knowledge-graph-mcp/internal/knowledgebase/sqlite"
 	"github.com/red1r3ct/knowledge-graph-mcp/internal/migrations"
+	notemcp "github.com/red1r3ct/knowledge-graph-mcp/internal/note/mcp"
+	notestorage "github.com/red1r3ct/knowledge-graph-mcp/internal/note/sqlite"
+	connmcp "github.com/red1r3ct/knowledge-graph-mcp/internal/connection/mcp"
+	connstorage "github.com/red1r3ct/knowledge-graph-mcp/internal/connection/sqlite"
 )
 
 const (
@@ -43,22 +47,46 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Initialize storage
-	storage, err := sqlite.NewStorage(dbPath)
+	// Initialize knowledgebase storage
+	kbStorage, err := kbstorage.NewStorage(dbPath)
 	if err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
+		log.Fatalf("Failed to initialize knowledgebase storage: %v", err)
 	}
-	defer storage.Close()
+	defer kbStorage.Close()
+
+	// Initialize note storage
+	noteStorage, err := notestorage.NewStorage(dbPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize note storage: %v", err)
+	}
+	defer noteStorage.Close()
+
+	// Initialize connection storage
+	connStorage, err := connstorage.NewStorage(dbPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize connection storage: %v", err)
+	}
+	defer connStorage.Close()
 
 	// Create MCP server
 	s := server.NewMCPServer(
-		"Knowledge Base MCP Server",
+		"Knowledge Graph MCP Server",
 		"1.0.0",
 	)
 
-	// Register all tools using the mcp package
-	if err := mcp.RegisterTools(s, storage); err != nil {
-		log.Fatalf("Failed to register tools: %v", err)
+	// Register all knowledgebase tools
+	if err := kbmcp.RegisterTools(s, kbStorage); err != nil {
+		log.Fatalf("Failed to register knowledgebase tools: %v", err)
+	}
+
+	// Register all note tools
+	if err := notemcp.RegisterTools(s, noteStorage); err != nil {
+		log.Fatalf("Failed to register note tools: %v", err)
+	}
+
+	// Register all connection tools
+	if err := connmcp.RegisterTools(s, connStorage); err != nil {
+		log.Fatalf("Failed to register connection tools: %v", err)
 	}
 
 	// Start the stdio server
